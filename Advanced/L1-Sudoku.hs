@@ -59,6 +59,10 @@ chop      :: Int -> [a] -> [[a]]
 chop n [] =  []
 chop n xs =  take n xs : chop n (drop n xs)
 
+single :: [a] -> Bool
+single [_] = True
+single _   = False
+
 valid :: Grid -> Bool
 valid g = all nodups (rows g) && --
           all nodups (cols g) &&
@@ -73,7 +77,7 @@ cp []       = [[]]
 cp (xs:xss) = [ y:ys | y <- xs, ys <- cp xss ] -- cp (xs:xss) = xs >>= \x -> cp xss >>= \y -> [x : y]
 
 explode :: Matrix [a] -> [Matrix a]
-explode m = cp (map cp m)
+explode = cp . map cp
 
 choices :: Grid -> Matrix Choices
 choices = map (map choice)
@@ -83,8 +87,24 @@ choices = map (map choice)
                        else
                          [v]
 
--- Naive: given the easy grid, produces 9^51 (9 digits raised to 51 empty squares to explore) grids to validate.
-solve' :: Grid -> [Grid]
-solve' = filter valid . explode . choices
+prune :: Matrix Choices -> Matrix Choices
+prune = pruneBy boxs . pruneBy cols . pruneBy rows -- boxs . boxs = id, cols . cols = id, rows . rows = id
+        where pruneBy f = f . map reduce . f
 
-main = do solve' easy
+-- e.g., reduce ["1234", "1", "34", "3"], note "1", and "3", are singular choices, so we can remove 1 and 3 from "1234", and "34"
+reduce :: Row Choices -> Row Choices
+reduce xss =  [ xs `minus` singles | xs <- xss ]
+              where singles = concat (filter single xss)
+
+minus :: Choices -> Choices -> Choices
+minus xs ys = if single xs then xs else xs \\ ys
+
+-- Naive: given the easy grid, produces 9^51 (9 digits raised to 51 empty squares to explore) grids to validate.
+solve :: Grid -> [Grid]
+solve = filter valid . explode . choices
+
+-- approx 10^24 earch space
+solve2 :: Grid -> [Grid]
+solve2 = filter valid . explode . prune . choices
+
+main = do solve2 easy
