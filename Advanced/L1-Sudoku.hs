@@ -9,6 +9,7 @@ type Grid = Matrix Value
 type Matrix a = [Row a] -- list of lists, 2D. Paramterised for future flexibility
 type Row a = [a]
 type Value = Char
+type Choices = [Value]
 
 boxsize :: Int
 boxsize = 3
@@ -67,4 +68,23 @@ nodups :: Eq a => [a] -> Bool
 nodups []     = True
 nodups (x:xs) = x `notElem` xs && nodups xs
 
-main = do print True
+cp :: [[a]] -> [[a]] -- cartesian product
+cp []       = [[]]
+cp (xs:xss) = [ y:ys | y <- xs, ys <- cp xss ] -- cp (xs:xss) = xs >>= \x -> cp xss >>= \y -> [x : y]
+
+explode :: Matrix [a] -> [Matrix a]
+explode m = cp (map cp m)
+
+choices :: Grid -> Matrix Choices
+choices = map (map choice)
+          where
+            choice v = if v == '.' then
+                         ['1'..'9']
+                       else
+                         [v]
+
+-- Naive: given the easy grid, produces 9^51 (9 digits raised to 51 empty squares to explore) grids to validate.
+solve' :: Grid -> [Grid]
+solve' = filter valid . explode . choices
+
+main = do solve' easy
