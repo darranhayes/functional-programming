@@ -1,6 +1,5 @@
-module Sudoku where
-
--- Note: many properties look trivial, but will be later in reasoning about the logic
+-- Sudoku solver
+-- http://www.cs.nott.ac.uk/~pszgmh/sudoku.lhs
 
 import Data.List
 
@@ -58,6 +57,17 @@ diabolical =  [".9.7..86.",
                ".2.6..35.",
                ".54..8.7."]
 
+minimal :: Grid
+minimal =  [".98......",
+            "....7....",
+            "....15...",
+            "1........",
+            "...2....9",
+            "...9.6.82",
+            ".......3.",
+            "5.1......",
+            "...4...2."]
+
 blank :: Grid
 blank = replicate n (replicate n '.')
   where n = boxsize ^ 2
@@ -85,11 +95,8 @@ single :: [a] -> Bool
 single [_] = True
 single _   = False
 
--- no duplicates in any row, column, or box (3*3)
-valid :: Grid -> Bool
-valid g = all nodups (rows g) && --
-          all nodups (cols g) &&
-          all nodups (boxs g)
+singles :: [[a]] -> [a]
+singles xss = concat (filter single xss)
 
 nodups :: Eq a => [a] -> Bool
 nodups []     = True
@@ -99,6 +106,17 @@ nodups (x:xs) = x `notElem` xs && nodups xs
 cp :: [[a]] -> [[a]]
 cp []       = [[]]
 cp (xs:xss) = [ y:ys | y <- xs, ys <- cp xss ] -- cp (xs:xss) = xs >>= \x -> cp xss >>= \y -> [x : y]
+
+-- the fixpoint of a function is an input value applied to the function that results in the same value
+fix :: Eq a => (a -> a) -> a -> a
+fix f x = if x == x' then x else fix f x'
+          where x' = f x
+
+-- no duplicates in any row, column, or box (3*3)
+valid :: Grid -> Bool
+valid g = all nodups (rows g) && --
+          all nodups (cols g) &&
+          all nodups (boxs g)
 
 -- considers all possible combinations for each cell
 explode :: Matrix [a] -> [Matrix a]
@@ -116,15 +134,14 @@ prune = pruneBy boxs . pruneBy cols . pruneBy rows -- boxs . boxs = id, cols . c
 
 -- e.g., reduce ["1234", "1", "34", "3"], note "1", and "3", are determined values, so we can remove 1 and 3 from "1234", and "34"
 reduce :: Row Choices -> Row Choices
-reduce xss =  [ xs `minus` singles | xs <- xss ]
-              where singles = concat (filter single xss)
+reduce xss =  [ xs `minus` singles xss | xs <- xss ]
 
 minus :: Choices -> Choices -> Choices
 minus xs ys = if single xs then xs else xs \\ ys
 
 -- Naive: given the easy grid, produces 9^51 (9 digits raised to 51 empty squares to explore) grids to validate.
-solve :: Grid -> [Grid]
-solve = filter valid . explode . choices
+solve1 :: Grid -> [Grid]
+solve1 = filter valid . explode . choices
 
 -- approx 10^24 earch space
 solve2 :: Grid -> [Grid]
@@ -134,9 +151,53 @@ solve2 = filter valid . explode . prune . choices
 solve3 :: Grid -> [Grid]
 solve3 = filter valid . explode . fix prune . choices
 
--- the fixpoint of a function is an input value applied to the function that results in the same value
-fix :: Eq a => (a -> a) -> a -> a
-fix f x = if x == x' then x else fix f x'
-          where x' = f x
+-- Blocked matrices -> cannot get a solution from these -> but collapse will create lots of candidates from a blocked matrix.
 
-main = do solve3 easy
+-- A void choice matrix ["1", ".", "23"], then the 2nd cell is blocked or 'void'. "At least one cell has no choices"
+void :: Matrix Choices -> Bool
+void = any (any null) -- any row has any empty cell
+
+-- A safe matrix has consistent rows, columns, and boxes. Consistent -> *no duplicate single entries*.
+-- ["1", "23", "1", "4"] is inconsistent
+-- ["1234", "1", "34", "4"] is consistent
+consistent :: Row Choices -> Bool
+consistent = nodups . singles
+
+safe :: Matrix Choices -> Bool
+safe m = all consistent (rows m) &&
+         all consistent (cols m) &&
+         all consistent (boxs m)
+
+blocked :: Matrix Choices -> Bool
+blocked m = void m || not (safe m) -- there are empty cells (no choices) or there are duplicated single cells
+
+-- similar to explode, but only for the first cell of more than one choices
+expand :: Matrix Choices -> [Matrix Choices]
+expand m = [rows1 ++ [row1 ++ [c] : row2] ++ rows2 | c <- cs]
+           where
+             (rows1, row:rows2) = span (all single) m -- break and span partition a list based on a predictate
+             (row1, cs:row2)    = span single row
+
+search :: Matrix Choices -> [Grid]
+search m | blocked m          = []
+         | all (all single) m = explode m
+         | otherwise          = [ g | m' <- expand m,
+                                      g  <- search (prune m') ]
+
+solve4 :: Grid -> [Grid]
+solve4 = search . prune . choices
+
+pretty :: Grid -> Grid -> IO ()
+pretty p s = let pairs = zip p s
+              in putStrLn . unlines $ map formatPair pairs
+             where formatPair (x, y) = x ++ "   " ++ y
+
+solve :: String -> Grid -> IO ()
+solve t g = do putStrLn $ t ++ " (" ++ show (length slns) ++ " - max 1000)"
+               pretty g (head slns)
+               where slns = take 1000 . solve4 $ g
+
+main = do solve "Easy" easy
+          solve "Gentle" gentle
+          solve "Minimal" minimal
+          solve "Diabolical" diabolical
