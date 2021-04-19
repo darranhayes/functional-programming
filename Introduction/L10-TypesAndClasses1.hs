@@ -1,4 +1,4 @@
-module TypesAndClasses where
+module TypesAndClasses1 where
 import Prelude hiding (repeat, Tree, False, True, Bool, flip, Maybe, Nothing, Just, add)
 
 -- Declare Types, Define Functions

@@ -1,4 +1,4 @@
-module TypesAndClasses where
+module TypesAndClasses2 where
 
 -- expression tree using integers, addition, and multiplication, parameterised for any type
 data Expr a = Val a                  -- leaf
